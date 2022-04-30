@@ -23,6 +23,7 @@ import android.Manifest
 import android.annotation.TargetApi
 import android.content.IntentSender
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
@@ -41,6 +42,7 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.LocationSettingsRequest
 import com.google.android.material.snackbar.Snackbar
+import kotlinx.android.synthetic.main.activity_hunt_main.*
 
 /**
  * The Treasure Hunt app is a single-player game based on geofences.
@@ -61,7 +63,7 @@ class HuntMainActivity : AppCompatActivity() {
     private lateinit var viewModel: GeofenceViewModel
 
     // TODO: Step 2 add in variable to check if device is running Q or later
-
+    private val runningQOrLater = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
     // A PendingIntent for the Broadcast Receiver that handles geofence transitions.
     // TODO: Step 8 add in a pending intent
 
@@ -120,6 +122,21 @@ class HuntMainActivity : AppCompatActivity() {
         grantResults: IntArray
     ) {
         // TODO: Step 5 add code to handle the result of the user's permission
+        val notGranted = grantResults.isEmpty() ||
+                grantResults[LOCATION_PERMISSION_INDEX] == PackageManager.PERMISSION_DENIED ||
+                (requestCode == REQUEST_FOREGROUND_AND_BACKGROUND_PERMISSION_RESULT_CODE && grantResults[BACKGROUND_LOCATION_PERMISSION_INDEX] == PackageManager.PERMISSION_DENIED)
+        if (notGranted) {
+            Snackbar.make(binding.activityMapsMain, R.string.permission_denied_explanation, Snackbar.LENGTH_INDEFINITE)
+                .setAction(R.string.settings) {
+                    startActivity(Intent().apply {
+                        action = Settings.ACTION_APPLICATION_DETAILS_SETTINGS
+                        data = Uri.fromParts("package", BuildConfig.APPLICATION_ID, null)
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    })
+                }.show()
+        } else {
+            checkDeviceLocationSettingsAndStartGeofence()
+        }
     }
 
     /**
@@ -160,7 +177,12 @@ class HuntMainActivity : AppCompatActivity() {
     private fun foregroundAndBackgroundLocationPermissionApproved(): Boolean {
         // TODO: Step 3 replace this with code to check that the foreground and background
         //  permissions were approved
-        return false
+        val foregroundLocationApproved = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val backgroundPermissionApproved = if (runningQOrLater) {
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
+        } else { true }
+
+        return  foregroundLocationApproved && backgroundPermissionApproved
     }
 
     /*
@@ -169,6 +191,16 @@ class HuntMainActivity : AppCompatActivity() {
     @TargetApi(29 )
     private fun requestForegroundAndBackgroundLocationPermissions() {
         // TODO: Step 4 add code to request foreground and background permissions
+        if (foregroundAndBackgroundLocationPermissionApproved()) return
+        var permissionsArray = arrayOf<String>(Manifest.permission.ACCESS_FINE_LOCATION)
+        val resultCode = when {
+            runningQOrLater -> {
+                permissionsArray += Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                REQUEST_FOREGROUND_AND_BACKGROUND_PERMISSION_RESULT_CODE
+            }
+            else -> REQUEST_FOREGROUND_ONLY_PERMISSIONS_REQUEST_CODE
+        }
+        ActivityCompat.requestPermissions(this@HuntMainActivity, permissionsArray, resultCode)
     }
 
     /*
